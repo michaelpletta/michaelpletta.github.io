@@ -1,0 +1,28 @@
+// Per-account Copilot UBB (usage-based consumption) MoM for one rep.
+// Database: rev_source
+// Substitute {{OWNER_ID}} and the two comparison windows.
+//
+// Source: salesforce_account_daily_ubb_revenue_fact
+//   gross_usage_in_dollar = gross Copilot usage in USD (usage-side, NOT final billed consumption)
+//   ai_units_consumed     = AI units consumed
+// Use EQUAL-LENGTH windows (e.g. prev month 1-28 vs current month 1-28) because the
+// current month is partial. Sum across the integration/model split rows per account.
+let me = "{{OWNER_ID}}";
+let u = salesforce_account_daily_ubb_revenue_fact | where sales_owner_id == me;
+let prev = u | where measurement_date between (datetime({{PREV_START}}) .. datetime({{PREV_END}}))
+    | summarize prev_gross = sum(gross_usage_in_dollar) by salesforce_account_id;
+let cur = u | where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}}))
+    | summarize cur_gross = sum(gross_usage_in_dollar), cur_units = sum(ai_units_consumed) by salesforce_account_id;
+cur
+| join kind=fullouter prev on salesforce_account_id
+| extend acct = coalesce(salesforce_account_id, salesforce_account_id1)
+| join kind=leftouter (salesforce_account_dim | project salesforce_account_id, salesforce_account_name)
+    on $left.acct == $right.salesforce_account_id
+| extend cur_gross = coalesce(cur_gross, 0.0), prev_gross = coalesce(prev_gross, 0.0)
+| extend ubb_delta = round(cur_gross - prev_gross, 0),
+         ubb_pct = round(iff(prev_gross > 0, (cur_gross - prev_gross)/prev_gross*100, 0.0), 1)
+| project account = salesforce_account_name, salesforce_account_id = acct,
+    prev_ubb = round(prev_gross, 0), cur_ubb = round(cur_gross, 0), ubb_delta, ubb_pct,
+    ai_units = round(cur_units, 0)
+| where prev_ubb > 0 or cur_ubb > 0
+| order by cur_ubb desc

@@ -1,0 +1,27 @@
+{
+  "rep_name": "Michael Pletta - Team Book",
+  "segment": "Corporate (team of 5)",
+  "region": "AMER",
+  "manager_sales_owner_id": "0050V000006XR1JQAW",
+  "owner_ids": [
+    "0050V000006XR1JQAW",
+    "0053o000008SiuNAAS",
+    "0055c00000B2l2nAAB",
+    "0053o00000977leAAA",
+    "005Kg000000lut9IAA",
+    "0053o0000096p8MAAQ"
+  ],
+  "owner_names": {
+    "0050V000006XR1JQAW": "Michael Pletta",
+    "0053o000008SiuNAAS": "James Osumah",
+    "0055c00000B2l2nAAB": "Kate Teevens",
+    "0053o00000977leAAA": "Alec Okino",
+    "005Kg000000lut9IAA": "Abhi Sehgal",
+    "0053o0000096p8MAAQ": "Vinson Compestine"
+  },
+  "publish_repo": "michaelpletta/michaelpletta.github.io",
+  "publish_branch": "master",
+  "publish_path": "copilot-book-health/index.html",
+  "dashboard_url": "https://michaelpletta.github.io/copilot-book-health/",
+  "issue_repo": "michaelpletta/michaelpletta.github.io"
+}

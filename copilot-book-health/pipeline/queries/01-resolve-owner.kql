@@ -1,0 +1,10 @@
+// Resolve the rep's sales-owner identity in Kusto.
+// Database: rev_source
+// Substitute {{OWNER_ID}} with the Salesforce User Id obtained from Salesforce
+// (SELECT Id FROM User WHERE Email = '<rep email>'), OR match on gh username.
+//
+// Returns the canonical sales_owner_id plus segment/team/region used for the header.
+sales_owner_dim
+| where sales_owner_id == "{{OWNER_ID}}" or sales_owner_gh_username == "{{GH_USERNAME}}"
+| project sales_owner_id, sales_owner, sales_owner_gh_username, sales_segment, sales_team, territory, region
+| take 5

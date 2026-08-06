@@ -1,0 +1,18 @@
+// Team-wide Copilot product/surface mix (all owner_ids), current window only.
+// Database: rev_source. Replace {{OWNERS_JSON_ARRAY}} and the {{CUR_START}}/{{CUR_END}} window.
+let owners = dynamic([{{OWNERS_JSON_ARRAY}}]);
+salesforce_account_daily_ubb_revenue_fact
+| where sales_owner_id in (owners)
+| where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}}))
+| join kind=leftouter (ubb_integration_model_dim | project ubb_integration_model_id, integration) on ubb_integration_model_id
+| extend surface = case(
+    integration has "mobile", "Mobile",
+    integration has "review", "Code Review",
+    integration has "chat" or integration has "language-server", "IDE (chat/completions)",
+    integration has "cli" or integration has "agentic", "CLI / Agent",
+    integration has "claude" or integration has "opencode" or integration has "zed" or integration has "code-oss" or integration has "slack", "Third-party clients",
+    integration startswith "copilot-developer" or integration has "desktop", "Copilot App",
+    "Other")
+| summarize gross = round(sum(gross_usage_in_dollar), 0) by salesforce_account_id, surface
+| where gross > 0
+| order by salesforce_account_id asc, gross desc

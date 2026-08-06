@@ -1,0 +1,34 @@
+// Per-account Copilot consumption split by PRODUCT / SURFACE for one rep, current window.
+// Database: rev_source
+// Substitute {{OWNER_ID}} and the current window ({{CUR_START}}/{{CUR_END}}).
+//
+// Source: salesforce_account_daily_ubb_revenue_fact (one row per account per day per integration/model)
+//   joined to ubb_integration_model_dim to resolve the `integration` (surface) label.
+//   gross_usage_in_dollar = usage-side gross spend (before the included-pool deduction).
+//
+// The `integration` value is the client/surface the usage was attributed to. It is EVOLVING
+// (new client names appear over time), so we bucket by pattern rather than a fixed enum. The
+// buckets answer "which Copilot products is this account consuming" (Chat, CLI / coding agent,
+// Code Review, Copilot App, Third-party clients, Mobile). Order in the case() matters: the CLI
+// test runs before the Copilot-App test so `copilot-developer-cli` lands in CLI / Agent.
+let me = "{{OWNER_ID}}";
+salesforce_account_daily_ubb_revenue_fact
+| where sales_owner_id == me
+| where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}}))
+| join kind=leftouter (ubb_integration_model_dim | project ubb_integration_model_id, integration)
+    on ubb_integration_model_id
+| extend surface = case(
+    integration has "mobile", "Mobile",
+    integration has "review", "Code Review",
+    integration has "chat" or integration has "language-server", "IDE (chat/completions)",
+    integration has "cli" or integration has "agentic", "CLI / Agent",
+    integration has "claude" or integration has "opencode" or integration has "zed"
+        or integration has "code-oss" or integration has "slack", "Third-party clients",
+    integration startswith "copilot-developer" or integration has "desktop", "Copilot App",
+    "Other")
+| summarize gross = round(sum(gross_usage_in_dollar), 0) by salesforce_account_id, surface
+| where gross > 0
+| order by salesforce_account_id asc, gross desc
+// One row per (account, surface). The build step pivots these into a per-account
+// `surfaces` object: { "IDE (chat/completions)": 108274, "CLI / Agent": 6469, ... }.
+// build_dashboard.py rolls the per-account surfaces up into the book-level product mix.

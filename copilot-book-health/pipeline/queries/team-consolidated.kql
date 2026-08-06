@@ -1,0 +1,41 @@
+// Team-wide consolidated Copilot book health pull (all owner_ids from config.json).
+// Database: rev_source
+// Replace the six {{...}} window tokens before running. Use EQUAL-LENGTH month-to-date
+// windows (e.g. previous full month 1-28 vs the most recent complete month 1-28) because
+// the running month is partial. as_of is derived from the health-score max date.
+let owners = dynamic([{{OWNERS_JSON_ARRAY}}]);
+let hs = salesforce_account_daily_copilot_health_score_fact | where sales_owner_id in (owners);
+let asof = toscalar(hs | summarize max(measurement_date));
+let cur = hs | where measurement_date == asof
+  | summarize arg_max(measurement_date, assigned_users, users_at_risk, grr_30day, high_watermark_number_copilot_assigned_users_180days, copilot_health_score_category, sales_owner_id) by salesforce_account_id;
+let mo1 = hs | where measurement_date <= datetime_add('day',-28,asof) | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id | project salesforce_account_id, seats_1mo=assigned_users;
+let mo3 = hs | where measurement_date <= datetime_add('day',-88,asof) | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id | project salesforce_account_id, seats_3mo=assigned_users;
+let u = salesforce_account_daily_ubb_revenue_fact | where sales_owner_id in (owners);
+let uprev = u | where measurement_date between (datetime({{PREV_START}}) .. datetime({{PREV_END}})) | summarize prev_ubb=sum(gross_usage_in_dollar) by salesforce_account_id;
+let ucur = u | where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}})) | summarize cur_ubb=sum(gross_usage_in_dollar), ai_units=sum(ai_units_consumed) by salesforce_account_id;
+let b = salesforce_account_daily_ubb_utilization_burn_rate_fact | where sales_owner_id in (owners);
+let basof = toscalar(b | summarize max(measurement_date));
+let nprev = b | where measurement_date between (datetime({{PREV_START}}) .. datetime({{PREV_END}})) | summarize net_prev=sum(account_billable_usage_in_dollar) by salesforce_account_id;
+let ncur = b | where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}})) | summarize net_cur=sum(account_billable_usage_in_dollar) by salesforce_account_id;
+let bsnap = b | where measurement_date == basof | summarize arg_max(measurement_date, account_nbr_of_ubb_users, projected_month_end_spend, promo_pool_for_month_in_dollar, promo_pool_utilization_pct) by salesforce_account_id;
+let spine = union (cur|project salesforce_account_id),(ucur|project salesforce_account_id),(uprev|project salesforce_account_id),(ncur|project salesforce_account_id),(bsnap|project salesforce_account_id) | distinct salesforce_account_id;
+spine
+| join kind=leftouter cur on salesforce_account_id
+| join kind=leftouter mo1 on salesforce_account_id
+| join kind=leftouter mo3 on salesforce_account_id
+| join kind=leftouter uprev on salesforce_account_id
+| join kind=leftouter ucur on salesforce_account_id
+| join kind=leftouter nprev on salesforce_account_id
+| join kind=leftouter ncur on salesforce_account_id
+| join kind=leftouter bsnap on salesforce_account_id
+| join kind=leftouter (salesforce_account_dim | project salesforce_account_id, salesforce_account_name) on salesforce_account_id
+| join kind=leftouter (sales_owner_dim | project sales_owner_id, sales_owner) on sales_owner_id
+| project account = salesforce_account_name, rep = sales_owner, salesforce_account_id,
+    seats_now = coalesce(assigned_users,0), seats_1mo = coalesce(seats_1mo,0), seats_3mo = coalesce(seats_3mo,0),
+    hwm = coalesce(high_watermark_number_copilot_assigned_users_180days,0), risk = coalesce(users_at_risk,0),
+    grr = round(coalesce(grr_30day,1.0),3), health = coalesce(copilot_health_score_category,""),
+    prev_ubb = round(coalesce(prev_ubb,0.0),0), cur_ubb = round(coalesce(cur_ubb,0.0),0), ai_units = round(coalesce(ai_units,0.0),0),
+    net_prev = round(coalesce(net_prev,0.0),0), net_cur = round(coalesce(net_cur,0.0),0),
+    engaged = coalesce(account_nbr_of_ubb_users,0), projected_eom = round(coalesce(projected_month_end_spend,0.0),0),
+    pool_dollars = round(coalesce(promo_pool_for_month_in_dollar,0.0),0), pool_util = round(coalesce(promo_pool_utilization_pct,0.0),3)
+| order by cur_ubb desc

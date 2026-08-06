@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Copilot Book Health Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#2f81f7;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --up:#3fb950; --down:#f85149;
+    --save:#f85149; --investigate:#d29922; --overage:#a371f7; --expand:#3fb950; --deepen:#2f81f7; --monitor:#8b949e;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:14px;line-height:1.45;}
+  header{padding:22px 28px 18px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#161b22,#0d1117);}
+  header h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.2px;}
+  header .sub{color:var(--muted);margin-top:4px;font-size:13px;}
+  .wrap{padding:22px 28px 60px;max-width:1400px;margin:0 auto;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+  .kpi.delta{border-width:2px;}
+  .kpi .val.up{color:var(--up);} .kpi .val.down{color:var(--down);}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);}
+  .kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;}
+  .kpi .val{font-size:26px;font-weight:680;margin-top:6px;letter-spacing:-.5px;}
+  .kpi .chg{font-size:12px;margin-top:4px;font-weight:600;}
+  .up{color:var(--up);} .down{color:var(--down);} .flat{color:var(--muted);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px;}
+  .grid3{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin-bottom:24px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);}
+  .card h2{margin:0 0 14px;font-size:14px;font-weight:640;display:flex;align-items:center;gap:8px;}
+  .card h2 .tag{font-size:11px;color:var(--muted);font-weight:500;}
+  canvas{max-height:280px;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .controls input,.controls select{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    padding:7px 10px;border-radius:7px;font-size:13px;outline:none;}
+  .controls input{min-width:220px;}
+  .controls .spacer{flex:1;}
+  .pill{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;display:inline-block;}
+  .pill.Green{background:rgba(63,185,80,.15);color:var(--green);}
+  .pill.Yellow{background:rgba(210,153,34,.15);color:var(--yellow);}
+  .pill.Red{background:rgba(248,81,73,.15);color:var(--red);}
+  .pill.Unknown{background:rgba(139,148,158,.15);color:var(--muted);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+    cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel);}
+  th:hover{color:var(--text);}
+  tbody tr:hover{background:var(--panel2);}
+  .tbl-wrap{max-height:560px;overflow:auto;border:1px solid var(--border);border-radius:10px;}
+  .num{font-variant-numeric:tabular-nums;}
+  .risk-row td:first-child{border-left:3px solid var(--red);}
+  .recs{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+  .rec{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:13px 15px;border-left:4px solid var(--monitor);}
+  .rec.SAVE{border-left-color:var(--save);}
+  .rec.INVESTIGATE{border-left-color:var(--investigate);}
+  .rec.OVERAGE{border-left-color:var(--overage);}
+  .rec.EXPAND{border-left-color:var(--expand);}
+  .rec.DEEPEN{border-left-color:var(--deepen);}
+  .rec .top{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .rec .name{font-weight:660;font-size:14px;}
+  .rec .badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:20px;}
+  .rec.SAVE .badge{background:rgba(248,81,73,.15);color:var(--save);}
+  .rec.INVESTIGATE .badge{background:rgba(210,153,34,.15);color:var(--investigate);}
+  .rec.OVERAGE .badge{background:rgba(163,113,247,.15);color:var(--overage);}
+  .rec.EXPAND .badge{background:rgba(63,185,80,.15);color:var(--expand);}
+  .rec.DEEPEN .badge{background:rgba(47,129,247,.15);color:var(--deepen);}
+  .rec.MONITOR .badge{background:rgba(139,148,158,.15);color:var(--monitor);}
+  .rec .why{font-size:13px;margin-top:6px;line-height:1.5;}
+  .rec .play{color:var(--muted);font-size:12px;margin-top:7px;}
+  .rec .meta{font-size:11px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums;}
+  .footnote{color:var(--muted);font-size:11px;margin-top:18px;line-height:1.6;}
+  .sec-title{font-size:15px;font-weight:640;margin:6px 0 14px;letter-spacing:-.2px;}
+  .empty{color:var(--muted);font-size:13px;padding:24px;text-align:center;border:1px dashed var(--border);border-radius:9px;}
+  .corrbox{display:flex;gap:22px;align-items:center;margin-bottom:12px;}
+  .corrbox .big{font-size:30px;font-weight:700;letter-spacing:-.5px;}
+  .slegend{display:flex;flex-direction:column;gap:7px;}
+  .slegend .row{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .slegend .sw{width:11px;height:11px;border-radius:3px;flex:none;}
+  .slegend .nm{flex:1;}
+  .slegend .amt{font-variant-numeric:tabular-nums;color:var(--muted);}
+  .surfmix{display:grid;grid-template-columns:190px 1fr;gap:16px;align-items:center;}
+  .surfbar{margin:2px 0 12px;}
+  .surfbar select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;max-width:100%;}
+  .bwrow{margin-bottom:13px;}
+  .bwtop{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;}
+  .bwname{font-weight:620;}
+  .bwsub{font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums;}
+  .bwmore{margin-top:6px;width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .bwmore:hover{border-color:var(--muted);}
+  .bar{height:8px;border-radius:6px;background:var(--panel);border:1px solid var(--border);margin-top:5px;overflow:hidden;}
+  .bar>span{display:block;height:100%;border-radius:6px;}
+  .captype{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:20px;white-space:nowrap;}
+  .captype.hard{background:rgba(248,81,73,.15);color:var(--red);}
+  .captype.soft{background:rgba(210,153,34,.15);color:var(--yellow);}
+  .tsurface{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--panel2);border:1px solid var(--border);color:var(--text);}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr);}.grid2,.grid3,.recs{grid-template-columns:1fr;}.surfmix{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Copilot Book Health Tracker</h1>
+  <div class="sub" id="subhead"></div>
+</header>
+<div class="wrap">
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="sec-title">Where to spend your time <span style="font-weight:400;color:var(--muted);font-size:13px;">— deterministic recommendations, ranked by impact</span></div>
+  <div class="card" style="margin-bottom:24px;">
+    <div class="recs" id="recs"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Top Seat Growth <span class="tag">assigned Copilot seats, MoM &Delta;</span></h2>
+      <canvas id="seatChart"></canvas>
+    </div>
+    <div class="card">
+      <h2>Top Consumption Growth <span class="tag">UBB gross usage, MoM</span></h2>
+      <canvas id="ubbChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="card">
+      <h2>Churn &amp; Risk Watchlist <span class="tag">act before renewal</span></h2>
+      <div id="watch"></div>
+    </div>
+    <div class="card">
+      <h2>Book Health Mix <span class="tag">by Copilot health category</span></h2>
+      <canvas id="healthChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Consumption by Copilot product <span class="tag">gross UBB $ by surface, current window</span></h2>
+      <div class="surfbar"><select id="surfFilter" aria-label="Filter product mix by account"></select></div>
+      <div id="surfaceWrap"></div>
+    </div>
+    <div class="card" id="budgetCard">
+      <h2>Budget &amp; cap watch <span class="tag">contracted Odometer budgets, % consumed &middot; top 10, expandable</span></h2>
+      <div id="budgetWatch"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;">
+    <h2>Seat &Delta; vs Consumption &Delta; <span class="tag">MoM% by account &middot; bubble size = current UBB</span></h2>
+    <div id="quadNote" class="footnote" style="margin:0 0 12px;"></div>
+    <canvas id="quadChart" style="max-height:380px;"></canvas>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;">
+    <h2>Engagement &harr; Usage <span class="tag">customer meetings (90d) vs Copilot consumption</span></h2>
+    <div id="engage"></div>
+  </div>
+
+  <div class="sec-title">Account detail</div>
+  <div class="controls">
+    <input id="search" type="text" placeholder="Search account..." />
+    <select id="healthFilter">
+      <option value="">All health</option>
+      <option value="Green">Green</option>
+      <option value="Yellow">Yellow</option>
+      <option value="Red">Red</option>
+    </select>
+    <select id="viewFilter">
+      <option value="">All accounts</option>
+      <option value="growth">Growing seats</option>
+      <option value="declining">Declining seats</option>
+      <option value="ubbup">Consumption up</option>
+      <option value="ubbdown">Consumption down</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="footnote" style="margin:0;">Click a column header to sort</span>
+  </div>
+  <div class="tbl-wrap">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th data-k="account">Account</th>
+          <th data-k="health">Health</th>
+          <th data-k="seats_now">Seats now</th>
+          <th data-k="seat_delta">Seats MoM</th>
+          <th data-k="seat_pct">Seat MoM%</th>
+          <th data-k="seats_3mo">Seats 3mo ago</th>
+          <th data-k="hwm">180d HWM</th>
+          <th data-k="engaged">Engaged</th>
+          <th data-k="util">Util%</th>
+          <th data-k="risk">Users at risk</th>
+          <th data-k="grr">GRR30</th>
+          <th data-k="cur_ubb">UBB gross (cur)</th>
+          <th data-k="net_cur">UBB net (cur)</th>
+          <th data-k="ubb_delta">UBB MoM $</th>
+          <th data-k="ubb_pct">UBB MoM%</th>
+          <th data-k="pool_util">Pool util%</th>
+          <th data-k="budget_pct">Budget used%</th>
+          <th data-k="budget_limit_type">Cap type</th>
+          <th data-k="top_surface">Top product</th>
+          <th data-k="meetings_90d">Mtgs 90d</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="footnote" id="footnote"></div>
+</div>
+
+<script>
+const META = /*__META_JSON__*/{};
+const BOOK = /*__BOOK_JSON__*/{};
+const DATA = /*__DATA_JSON__*/[];
+const RECS = /*__RECS_JSON__*/[];
+const ENGAGE = /*__ENGAGE_JSON__*/{enabled:false};
+
+document.getElementById("subhead").innerHTML =
+  `${META.rep_name||"—"} &middot; ${META.segment||""} &middot; ${META.region||""} &nbsp;|&nbsp; `+
+  `Source: <span class="num">rev_source</span> (Kusto) &middot; as of ${META.as_of||"—"} &middot; scoped to accounts you own`;
+document.getElementById("footnote").innerHTML =
+  `<strong>Notes &amp; caveats.</strong> Seats = <em>assigned Copilot users</em> from the Salesforce-account Copilot health-score fact. `+
+  `UBB = usage-based Copilot consumption. <em>Gross</em> is usage before the included-spend pool; <em>net / billable</em> `+
+  `(from the burn-rate fact) is usage after the promo/standard pool deduction, still a usage-side figure and not final billed consumption. `+
+  `Engaged = distinct billable Copilot users; Util% = engaged / assigned seats (low util = shelfware). `+
+  `Pool util% = projected month-end spend / modeled included pool (a planning estimate, not a contracted cap); at or above 100% the account is projected into overage. `+
+  `Budget used% and Cap type are the <em>real</em> contracted budget from Odometer (get_budgets, enterprise-slug accounts only): a hard cap (PreventFurtherUsage) blocks usage at the limit, an alert cap warns but lets usage continue. `+
+  `Product mix / Top product = gross UBB $ grouped by the Copilot surface (integration) the usage came from, so Chat, CLI / coding agent, Code Review, third-party clients, App, and Mobile are separated. `+
+  `UBB MoM compares equal windows (${META.ubb_window||"prior vs current month-to-date"}). `+
+  `GRR30 = 30-day gross retention rate. 180d HWM = high-watermark of assigned users over trailing 180 days. `+
+  `Recommendations are generated by a fixed rules engine (scripts/recommend.py), identical for every rep. `+
+  `Scoped to sales_owner_id ${META.sales_owner_id||"—"}.`;
+
+const fmt = n => n===null||n===undefined ? "-" : Math.round(n).toLocaleString();
+const usd = n => n===null||n===undefined ? "-" : "$"+Math.round(n).toLocaleString();
+const usdk = n => n===null||n===undefined ? "-" : "$"+(Math.round(n/100)/10).toLocaleString()+"k";
+const pct = n => (n>0?"+":"")+Number(n).toFixed(1)+"%";
+const rpct = r => r===null||r===undefined ? "-" : (Math.round(r*1000)/10).toFixed(1)+"%";
+const cls = n => n>0?"up":(n<0?"down":"flat");
+const arrow = n => n>0?"&#9650;":(n<0?"&#9660;":"&#8226;");
+
+// KPIs
+const seatMoM = BOOK.seats_now - BOOK.seats_1mo;
+const seatMoMpct = BOOK.seats_1mo>0 ? seatMoM/BOOK.seats_1mo*100 : 0;
+const ubbMoM = BOOK.ubb_cur - BOOK.ubb_prev;
+const ubbMoMpct = BOOK.ubb_prev>0 ? ubbMoM/BOOK.ubb_prev*100 : 0;
+const redCount = DATA.filter(d=>d.health==="Red").length;
+const yellowCount = DATA.filter(d=>d.health==="Yellow").length;
+const growing = DATA.filter(d=>d.seat_delta>0).length;
+const declining = DATA.filter(d=>d.seat_delta<0).length;
+const hasNet = BOOK.net_cur!==null&&BOOK.net_cur!==undefined;
+const netMoM = hasNet ? (BOOK.net_cur-(BOOK.net_prev||0)) : null;
+const bookUtil = (BOOK.engaged_now!==null&&BOOK.engaged_now!==undefined&&BOOK.seats_now>0)
+  ? BOOK.engaged_now/BOOK.seats_now : null;
+const overageAccts = (BOOK.overage_accounts!==null&&BOOK.overage_accounts!==undefined)
+  ? BOOK.overage_accounts : DATA.filter(d=>d.pool_util!==null&&d.pool_util!==undefined&&d.pool_util>=1).length;
+const budgetData = DATA.filter(d=>d.budget_target!==null&&d.budget_target!==undefined&&d.budget_target>0);
+const hasBudget = budgetData.length>0;
+const bookBudgetAccts = (BOOK.budget_accounts!==null&&BOOK.budget_accounts!==undefined)?BOOK.budget_accounts:budgetData.length;
+const bookNearCap = (BOOK.budget_near_cap!==null&&BOOK.budget_near_cap!==undefined)
+  ? BOOK.budget_near_cap : budgetData.filter(d=>d.budget_pct!==null&&d.budget_pct>=0.8).length;
+const kpis = [
+  {label:"Assigned Copilot seats", val:fmt(BOOK.seats_now), chg:`vs ${fmt(BOOK.seats_1mo)} a month ago`, cl:"flat"},
+  {label:"Net seat change (MoM)", val:`${arrow(seatMoM)} ${fmt(Math.abs(seatMoM))}`, valcl:cls(seatMoM), delta:true, chg:`${pct(seatMoMpct)} &middot; ${growing} up / ${declining} down`, cl:cls(seatMoM)},
+  {label:"UBB gross (current)", val:usdk(BOOK.ubb_cur), chg:`vs ${usdk(BOOK.ubb_prev)} prior window`, cl:"flat"},
+  {label:"UBB net / billable (current)", val:hasNet?usdk(BOOK.net_cur):"-", chg:hasNet?`${netMoM>=0?"+":""}${usdk(netMoM)} MoM &middot; usage-side, post-pool`:"burn-rate query not run", cl:hasNet?cls(netMoM):"flat"},
+  {label:"Consumption change (MoM)", val:`${arrow(ubbMoM)} ${usdk(Math.abs(ubbMoM))}`, valcl:cls(ubbMoM), delta:true, chg:`${pct(ubbMoMpct)} MoM (gross)`, cl:cls(ubbMoM)},
+  {label:"Book utilization", val:bookUtil!==null?rpct(bookUtil):"-", chg:bookUtil!==null?`${fmt(BOOK.engaged_now)} engaged of ${fmt(BOOK.seats_now)} seats`:"engaged users not loaded", cl:bookUtil!==null&&bookUtil<0.4?"down":"flat"},
+  {label:"Overage-risk accounts", val:overageAccts, chg:`projected past included pool`, cl:overageAccts>0?"down":"flat"},
+  {label:"Near budget cap", val:hasBudget?bookNearCap:"-", chg:hasBudget?`&ge;80% of contracted budget &middot; ${bookBudgetAccts} tracked`:"budgets not loaded", cl:hasBudget&&bookNearCap>0?"down":"flat"},
+  {label:"Accounts w/ Copilot", val:DATA.length, chg:`${META.total_owned?("of "+META.total_owned+" owned"):"in book"}`, cl:"flat"},
+  {label:"Accounts growing seats", val:growing, chg:`${declining} declining`, cl:"up"},
+  {label:"Red-health accounts", val:redCount, chg:`${yellowCount} yellow`, cl:redCount>0?"down":"flat"},
+  {label:"Total users at risk", val:fmt(DATA.reduce((s,d)=>s+(d.risk||0),0)), chg:`across the book`, cl:"down"}
+];
+document.getElementById("kpis").innerHTML = kpis.map(k=>
+  `<div class="kpi ${k.delta?'delta':''}"><div class="label">${k.label}</div><div class="val ${k.valcl||''}">${k.val}</div><div class="chg ${k.cl}">${k.chg}</div></div>`).join("");
+
+// Recommendations (top 8 by attention, excluding pure Monitor unless nothing else)
+const actionRecs = RECS.filter(r=>r.bucket!=="MONITOR");
+const showRecs = (actionRecs.length?actionRecs:RECS).slice(0,8);
+document.getElementById("recs").innerHTML = showRecs.map(r=>
+  `<div class="rec ${r.bucket}">
+     <div class="top"><span class="name">${r.account}</span><span class="badge">${r.bucket_label}</span></div>
+     <div class="why">${r.why}</div>
+     <div class="play">${r.play}</div>
+     <div class="meta">UBB ${usd(r.cur_ubb)}${r.cur_net!==null&&r.cur_net!==undefined?` &middot; net ${usd(r.cur_net)}`:""} &middot; ${fmt(r.seats_now)} seats${r.util!==null&&r.util!==undefined?` &middot; util ${rpct(r.util)}`:""}${r.budget_pct!==null&&r.budget_pct!==undefined?` &middot; budget ${rpct(r.budget_pct)}${r.budget_limit_type==="PreventFurtherUsage"?" (hard cap)":r.budget_limit_type?" (alert)":""}`:(r.pool_util!==null&&r.pool_util!==undefined?` &middot; pool ${rpct(r.pool_util)}`:"")}${r.top_surface?` &middot; top: ${r.top_surface}`:""} &middot; ${r.health}</div>
+   </div>`).join("");
+
+// Charts
+Chart.defaults.color="#8b949e";
+Chart.defaults.font.family="-apple-system,Segoe UI,sans-serif";
+const gridc="rgba(139,148,158,.12)";
+
+const topSeats=[...DATA].sort((a,b)=>b.seat_delta-a.seat_delta).slice(0,8);
+new Chart(seatChart,{type:"bar",data:{labels:topSeats.map(d=>d.account),
+  datasets:[{data:topSeats.map(d=>d.seat_delta),
+    backgroundColor:topSeats.map(d=>d.seat_delta>=0?"#3fb950":"#f85149"),borderRadius:4}]},
+  options:{indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw>0?"+":""}${c.raw} seats`}}},
+    scales:{x:{grid:{color:gridc}},y:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+const topUbb=[...DATA].filter(d=>d.cur_ubb>1000).sort((a,b)=>b.ubb_delta-a.ubb_delta).slice(0,8);
+new Chart(ubbChart,{type:"bar",data:{labels:topUbb.map(d=>d.account),
+  datasets:[{data:topUbb.map(d=>d.ubb_delta),
+    backgroundColor:topUbb.map(d=>d.ubb_delta>=0?"#2f81f7":"#f85149"),borderRadius:4}]},
+  options:{indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw>0?"+":""}$${Math.round(c.raw).toLocaleString()} MoM`}}},
+    scales:{x:{grid:{color:gridc},ticks:{callback:v=>"$"+(v/1000)+"k"}},y:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+const hc={Green:0,Yellow:0,Red:0};DATA.forEach(d=>{if(hc[d.health]!==undefined)hc[d.health]++;});
+new Chart(healthChart,{type:"doughnut",data:{labels:["Green","Yellow","Red"],
+  datasets:[{data:[hc.Green,hc.Yellow,hc.Red],backgroundColor:["#3fb950","#d29922","#f85149"],borderWidth:0}]},
+  options:{cutout:"62%",plugins:{legend:{position:"bottom",labels:{padding:14,font:{size:12}}}}}});
+
+// Product / surface mix (book-level) — which Copilot products the book consumes.
+const SURF_COLOR={
+  "IDE (chat/completions)":"#2f81f7","CLI / Agent":"#a371f7","Code Review":"#3fb950",
+  "Third-party clients":"#d29922","Copilot App":"#db61a2","Mobile":"#8b949e","Other":"#6e7681"};
+const surfColor=l=>SURF_COLOR[l]||"#6e7681";
+const surfWrap=document.getElementById("surfaceWrap");
+const surfSel=document.getElementById("surfFilter");
+const bookSurf=BOOK.surfaces||null;
+let surfChart=null;
+function renderSurf(surfaces){
+  if(surfChart){surfChart.destroy();surfChart=null;}
+  if(!surfaces||!Object.keys(surfaces).length){
+    surfWrap.innerHTML=`<div class="empty">No product-mix data for this selection.</div>`;return;
+  }
+  const entries=Object.entries(surfaces).sort((a,b)=>b[1]-a[1]);
+  const tot=entries.reduce((s,e)=>s+e[1],0)||1;
+  surfWrap.innerHTML=`<div class="surfmix"><div><canvas id="surfChart" style="max-height:190px;"></canvas></div>`+
+    `<div class="slegend">`+entries.map(([l,v])=>
+      `<div class="row"><span class="sw" style="background:${surfColor(l)}"></span>`+
+      `<span class="nm">${l}</span><span class="amt">${usdk(v)} &middot; ${(v/tot*100).toFixed(0)}%</span></div>`).join("")+
+    `</div></div>`;
+  surfChart=new Chart(document.getElementById("surfChart"),{type:"doughnut",
+    data:{labels:entries.map(e=>e[0]),datasets:[{data:entries.map(e=>e[1]),
+      backgroundColor:entries.map(e=>surfColor(e[0])),borderWidth:0}]},
+    options:{cutout:"60%",plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>`${c.label}: $${Math.round(c.raw).toLocaleString()} (${(c.raw/tot*100).toFixed(0)}%)`}}}}});
+}
+if((bookSurf&&Object.keys(bookSurf).length)||DATA.some(d=>d.surfaces&&Object.keys(d.surfaces).length)){
+  const acctSurf=DATA.filter(d=>d.surfaces&&Object.keys(d.surfaces).length)
+    .map(d=>({name:d.account,surfaces:d.surfaces,tot:Object.values(d.surfaces).reduce((s,v)=>s+v,0)}))
+    .sort((a,b)=>b.tot-a.tot);
+  surfSel.innerHTML=`<option value="__book__">Total book (${acctSurf.length} accounts)</option>`+
+    acctSurf.map((a,i)=>`<option value="${i}">${a.name}</option>`).join("");
+  surfSel.addEventListener("change",()=>{
+    const v=surfSel.value;
+    renderSurf(v==="__book__"?bookSurf:acctSurf[+v].surfaces);
+  });
+  renderSurf(bookSurf||acctSurf.reduce((acc,a)=>{for(const[k,val]of Object.entries(a.surfaces))acc[k]=(acc[k]||0)+val;return acc;},{}));
+}else{
+  surfSel.style.display="none";
+  surfWrap.innerHTML=`<div class="empty">Product mix not loaded. Run queries/07-surface-mix.kql and merge the per-account <span class="num">surfaces</span> object to see Chat vs CLI/Agent vs Code Review vs third-party split.</div>`;
+}
+
+// Budget & cap watch — real contracted Odometer budgets, sorted by % consumed.
+// Shows the top 10 by default; "Show all" reveals every tracked budget.
+const bw=document.getElementById("budgetWatch");
+const BUDGET_TOP_N=10;
+if(hasBudget){
+  const sorted=[...budgetData].sort((a,b)=>(b.budget_pct||0)-(a.budget_pct||0));
+  const bwRow=d=>{
+    const p=d.budget_pct||0, pctTxt=(p*100).toFixed(0)+"%";
+    const col=p>=1?"#f85149":p>=0.8?"#d29922":"#3fb950";
+    const hard=d.budget_limit_type==="PreventFurtherUsage";
+    return `<div class="bwrow">
+      <div class="bwtop"><span class="bwname">${d.account}</span>
+        <span class="captype ${hard?'hard':'soft'}">${hard?"Hard cap":"Alert cap"}</span></div>
+      <div class="bar"><span style="width:${Math.min(p*100,100).toFixed(0)}%;background:${col}"></span></div>
+      <div class="bwsub">${pctTxt} of ${usd(d.budget_target)} &middot; ${usd(d.budget_current)} used${p>=1?(hard?" &middot; at hard cap (usage blocked)":" &middot; over alert cap (usage still flowing)"):""}</div>
+    </div>`;};
+  let bwExpanded=false;
+  const paintBudgets=()=>{
+    const shown=bwExpanded?sorted:sorted.slice(0,BUDGET_TOP_N);
+    let html=shown.map(bwRow).join("");
+    if(sorted.length>BUDGET_TOP_N){
+      html+=`<button id="bwToggle" class="bwmore">${bwExpanded?"Show top "+BUDGET_TOP_N:"Show all "+sorted.length+" budgets"}</button>`;
+    }
+    bw.innerHTML=html;
+    const btn=document.getElementById("bwToggle");
+    if(btn) btn.addEventListener("click",()=>{bwExpanded=!bwExpanded;paintBudgets();});
+  };
+  paintBudgets();
+}else{
+  document.getElementById('budgetCard').style.display='none';
+  document.querySelectorAll('th[data-k="budget_pct"],th[data-k="budget_limit_type"]').forEach(el=>el.style.display='none');
+}
+
+// Seat delta vs consumption delta quadrant (opposite-direction accounts pop out)
+const QCAP=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const quadColor=(x,y)=> x>=0&&y>=0 ? "#3fb950" : x<0&&y>=0 ? "#2f81f7" : x<0&&y<0 ? "#f85149" : "#d29922";
+const qpts=DATA.filter(d=>d.seat_pct!==null&&d.seat_pct!==undefined&&d.ubb_pct!==null&&d.ubb_pct!==undefined).map(d=>({
+  x:QCAP(d.seat_pct,-100,120), y:QCAP(d.ubb_pct,-100,160),
+  rawx:d.seat_pct, rawy:d.ubb_pct, label:d.account,
+  r:QCAP(3+Math.sqrt(Math.max(d.cur_ubb||0,0))/25,4,22),
+  c:quadColor(d.seat_pct,d.ubb_pct)}));
+const deepen=DATA.filter(d=>d.seat_delta<0&&d.ubb_pct>=15).map(d=>d.account);
+const gap=DATA.filter(d=>d.seat_delta>0&&d.ubb_pct<=-15).map(d=>d.account);
+document.getElementById("quadNote").innerHTML=
+  `<span class="up">&#9632;</span> both up &nbsp; <span style="color:#2f81f7">&#9632;</span> seats down, usage up (deepening) &nbsp; `+
+  `<span class="down">&#9632;</span> both down &nbsp; <span style="color:#d29922">&#9632;</span> seats up, usage down (adoption gap)`+
+  (deepen.length?`<br><strong>Deepening (fewer seats, more usage):</strong> ${deepen.join(", ")}.`:"")+
+  (gap.length?`<br><strong>Adoption gap (more seats, less usage):</strong> ${gap.join(", ")}.`:"");
+const quadBg={id:"quadBg",beforeDatasetsDraw(ch){const a=ch.chartArea,s=ch.scales;if(!a)return;
+  const x0=QCAP(s.x.getPixelForValue(0),a.left,a.right),y0=QCAP(s.y.getPixelForValue(0),a.top,a.bottom);
+  const g=ch.ctx;g.save();g.globalAlpha=.06;
+  g.fillStyle="#3fb950";g.fillRect(x0,a.top,a.right-x0,y0-a.top);
+  g.fillStyle="#2f81f7";g.fillRect(a.left,a.top,x0-a.left,y0-a.top);
+  g.fillStyle="#f85149";g.fillRect(a.left,y0,x0-a.left,a.bottom-y0);
+  g.fillStyle="#d29922";g.fillRect(x0,y0,a.right-x0,a.bottom-y0);
+  g.globalAlpha=1;g.strokeStyle="rgba(139,148,158,.45)";g.lineWidth=1;
+  g.beginPath();g.moveTo(x0,a.top);g.lineTo(x0,a.bottom);g.moveTo(a.left,y0);g.lineTo(a.right,y0);g.stroke();g.restore();}};
+new Chart(document.getElementById("quadChart"),{type:"bubble",
+  data:{datasets:[{data:qpts,backgroundColor:qpts.map(p=>p.c+"cc"),borderColor:qpts.map(p=>p.c),borderWidth:1}]},
+  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw.label}: seats ${c.raw.rawx>0?"+":""}${c.raw.rawx}%, usage ${c.raw.rawy>0?"+":""}${c.raw.rawy}%`}}},
+    scales:{x:{title:{display:true,text:"Seat change MoM (%)"},grid:{color:gridc},ticks:{callback:v=>v+"%"}},
+            y:{title:{display:true,text:"Consumption change MoM (%)"},grid:{color:gridc},ticks:{callback:v=>v+"%"}}}},
+  plugins:[quadBg]});
+
+// Watchlist = SAVE + INVESTIGATE recs
+const watch = RECS.filter(r=>r.bucket==="SAVE"||r.bucket==="INVESTIGATE").slice(0,8);
+document.getElementById("watch").innerHTML = watch.length ? watch.map(w=>
+  `<div class="rec ${w.bucket}" style="margin-bottom:10px;">
+     <div class="top"><span class="name">${w.account}</span><span class="badge">${w.bucket_label}</span></div>
+     <div class="why">${w.why}</div>
+     <div class="play">${w.play}</div>
+     <div class="meta">UBB ${usd(w.cur_ubb)} &middot; ${fmt(w.seats_now)} seats</div>
+   </div>`).join("") : `<div class="empty">No churn or disengagement signals in the book. Nice.</div>`;
+
+// Engagement scatter
+const eDiv=document.getElementById("engage");
+if(ENGAGE && ENGAGE.enabled){
+  const pts=DATA.filter(d=>d.meetings_90d!==null&&d.meetings_90d!==undefined&&d.cur_ubb>0)
+    .map(d=>({x:d.meetings_90d,y:d.cur_ubb,label:d.account}));
+  eDiv.innerHTML=`<div class="corrbox">
+      <div><div class="big ${ENGAGE.correlation>=0?'up':'down'}">r = ${Number(ENGAGE.correlation).toFixed(2)}</div>
+      <div class="footnote" style="margin:0;">Pearson corr, meetings(90d) vs current UBB</div></div>
+      <div class="footnote" style="margin:0;flex:1;">${ENGAGE.note||""}</div>
+    </div><canvas id="engChart"></canvas>`;
+  new Chart(document.getElementById("engChart"),{type:"scatter",
+    data:{datasets:[{data:pts,backgroundColor:"#2f81f7"}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw.label}: ${c.raw.x} mtgs, $${Math.round(c.raw.y).toLocaleString()}`}}},
+      scales:{x:{title:{display:true,text:"Customer meetings (last 90 days)"},grid:{color:gridc}},
+              y:{title:{display:true,text:"UBB gross (current, $)"},grid:{color:gridc},ticks:{callback:v=>"$"+(v/1000)+"k"}}}}});
+} else {
+  eDiv.innerHTML=`<div class="empty">Calendar engagement not connected. Run the skill's engagement phase (WorkIQ) to correlate meeting cadence with Copilot usage.</div>`;
+}
+
+// Table
+let sortK="seat_delta", sortDir=-1;
+function render(){
+  const q=document.getElementById("search").value.toLowerCase();
+  const hf=document.getElementById("healthFilter").value;
+  const vf=document.getElementById("viewFilter").value;
+  let rows=DATA.filter(d=>(d.account||"").toLowerCase().includes(q))
+    .filter(d=>!hf||d.health===hf)
+    .filter(d=>{
+      if(vf==="growth")return d.seat_delta>0;
+      if(vf==="declining")return d.seat_delta<0;
+      if(vf==="ubbup")return d.ubb_delta>0;
+      if(vf==="ubbdown")return d.ubb_delta<0;
+      return true;});
+  rows.sort((a,b)=>{let x=a[sortK],y=b[sortK];
+    if(typeof x==="string")return x.localeCompare(y)*sortDir;
+    return((x??-1e15)-(y??-1e15))*sortDir;});
+  document.getElementById("tbody").innerHTML=rows.map(d=>{
+    const risky=d.health==="Red"||d.seat_pct<=-10||d.grr<0.9;
+    return `<tr class="${risky?'risk-row':''}">
+      <td>${d.account}</td>
+      <td style="text-align:center"><span class="pill ${d.health||'Unknown'}">${d.health||'?'}</span></td>
+      <td class="num">${fmt(d.seats_now)}</td>
+      <td class="num ${cls(d.seat_delta)}">${d.seat_delta>0?"+":""}${d.seat_delta}</td>
+      <td class="num ${cls(d.seat_pct)}">${pct(d.seat_pct)}</td>
+      <td class="num">${fmt(d.seats_3mo)}</td>
+      <td class="num">${fmt(d.hwm)}</td>
+      <td class="num">${d.engaged===null||d.engaged===undefined?"-":fmt(d.engaged)}</td>
+      <td class="num ${d.util!==null&&d.util!==undefined&&d.util<0.4?'down':''}">${rpct(d.util)}</td>
+      <td class="num">${fmt(d.risk)}</td>
+      <td class="num ${d.grr<0.9?'down':''}">${Number(d.grr).toFixed(2)}</td>
+      <td class="num">${usd(d.cur_ubb)}</td>
+      <td class="num">${d.net_cur===null||d.net_cur===undefined?"-":usd(d.net_cur)}</td>
+      <td class="num ${cls(d.ubb_delta)}">${d.ubb_delta>0?"+":""}${usd(d.ubb_delta)}</td>
+      <td class="num ${cls(d.ubb_pct)}">${pct(d.ubb_pct)}</td>
+      <td class="num ${d.pool_util!==null&&d.pool_util!==undefined&&d.pool_util>=1?'down':''}">${rpct(d.pool_util)}</td>
+      ${hasBudget?`<td class="num ${d.budget_pct!==null&&d.budget_pct!==undefined&&d.budget_pct>=0.8?'down':''}">${rpct(d.budget_pct)}</td>
+      <td style="text-align:center">${d.budget_limit_type?`<span class="captype ${d.budget_limit_type==="PreventFurtherUsage"?'hard':'soft'}">${d.budget_limit_type==="PreventFurtherUsage"?"Hard":"Alert"}</span>`:"-"}</td>`:''}
+      <td>${d.top_surface?`<span class="tsurface">${d.top_surface}</span>`:"-"}</td>
+      <td class="num">${d.meetings_90d===null||d.meetings_90d===undefined?"-":d.meetings_90d}</td>
+    </tr>`;}).join("");
+}
+document.querySelectorAll("th").forEach(th=>th.addEventListener("click",()=>{
+  const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=-1;}render();}));
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("healthFilter").addEventListener("change",render);
+document.getElementById("viewFilter").addEventListener("change",render);
+render();
+</script>
+</body>
+</html>

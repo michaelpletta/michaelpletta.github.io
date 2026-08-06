@@ -1,0 +1,18 @@
+// Book-level headline KPIs for one rep.
+// Database: rev_source
+// Substitute {{OWNER_ID}} with the sales_owner_id from 01-resolve-owner.kql.
+//
+// UBB history begins ~2026-06, so the UBB MoM compares equal month-to-date windows.
+// Adjust the two UBB windows to (previous full-or-MTD month) vs (current MTD) at run time.
+let me = "{{OWNER_ID}}";
+let hs = salesforce_account_daily_copilot_health_score_fact | where sales_owner_id == me;
+let asof = toscalar(hs | summarize max(measurement_date));
+let seats_now = toscalar(hs | where measurement_date == asof | summarize sum(assigned_users));
+let seats_1mo = toscalar(hs | where measurement_date <= datetime_add('day',-28,asof)
+    | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id | summarize sum(assigned_users));
+let seats_3mo = toscalar(hs | where measurement_date <= datetime_add('day',-88,asof)
+    | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id | summarize sum(assigned_users));
+let u = salesforce_account_daily_ubb_revenue_fact | where sales_owner_id == me;
+let ubb_prev = toscalar(u | where measurement_date between (datetime({{PREV_START}}) .. datetime({{PREV_END}})) | summarize sum(gross_usage_in_dollar));
+let ubb_cur  = toscalar(u | where measurement_date between (datetime({{CUR_START}})  .. datetime({{CUR_END}}))  | summarize sum(gross_usage_in_dollar));
+print as_of = asof, seats_now, seats_1mo, seats_3mo, ubb_prev = round(ubb_prev,0), ubb_cur = round(ubb_cur,0)

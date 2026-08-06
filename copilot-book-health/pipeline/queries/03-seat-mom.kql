@@ -1,0 +1,35 @@
+// Per-account Copilot SEAT trend + churn signals for one rep.
+// Database: rev_source
+// Substitute {{OWNER_ID}} with the sales_owner_id.
+//
+// Source: salesforce_account_daily_copilot_health_score_fact
+//   assigned_users            = assigned Copilot seats (point-in-time)
+//   users_at_risk             = assigned users flagged at risk
+//   grr_30day                 = 30-day gross retention rate (1.0 = no loss)
+//   high_watermark_..._180days= peak assigned users over trailing 180d (contraction signal)
+//   copilot_health_score_category = Green | Yellow | Red
+// NOTE: 'latest' is a reserved token in KQL — do not name a let-binding `latest`.
+let me = "{{OWNER_ID}}";
+let hs = salesforce_account_daily_copilot_health_score_fact | where sales_owner_id == me;
+let asof = toscalar(hs | summarize max(measurement_date));
+let cur = hs | where measurement_date == asof
+    | summarize arg_max(measurement_date, assigned_users, users_at_risk, grr_30day,
+        high_watermark_number_copilot_assigned_users_180days, copilot_health_score_category)
+      by salesforce_account_id;
+let mo1 = hs | where measurement_date <= datetime_add('day',-28,asof)
+    | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id
+    | project salesforce_account_id, seats_1mo = assigned_users;
+let mo3 = hs | where measurement_date <= datetime_add('day',-88,asof)
+    | summarize arg_max(measurement_date, assigned_users) by salesforce_account_id
+    | project salesforce_account_id, seats_3mo = assigned_users;
+cur
+| join kind=leftouter mo1 on salesforce_account_id
+| join kind=leftouter mo3 on salesforce_account_id
+| join kind=leftouter (salesforce_account_dim | project salesforce_account_id, salesforce_account_name) on salesforce_account_id
+| extend seat_delta = assigned_users - seats_1mo
+| extend seat_pct = round(iff(seats_1mo > 0, todouble(seat_delta)/seats_1mo*100, 0.0), 1)
+| project account = salesforce_account_name, salesforce_account_id,
+    seats_now = assigned_users, seats_1mo, seats_3mo, seat_delta, seat_pct,
+    hwm = high_watermark_number_copilot_assigned_users_180days,
+    risk = users_at_risk, grr = round(grr_30day, 3), health = copilot_health_score_category
+| order by seat_delta desc

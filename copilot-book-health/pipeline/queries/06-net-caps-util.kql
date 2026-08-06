@@ -1,0 +1,44 @@
+// Per-account Copilot NET (billable) consumption, engaged users, and pool / overage risk for one rep.
+// Database: rev_source
+// Substitute {{OWNER_ID}} and the two equal-length windows ({{PREV_START}}/{{PREV_END}}/{{CUR_START}}/{{CUR_END}}).
+//
+// Source: salesforce_account_daily_ubb_utilization_burn_rate_fact (one row per account per day)
+//   account_billable_usage_in_dollar = NET usage-side spend AFTER the promo/standard included-pool deduction
+//   account_nbr_of_ubb_users         = distinct active billable Copilot users (deduped across integration/model)
+//   projected_month_end_spend        = run-rate projection of full-month gross spend
+//   promo_pool_for_month_in_dollar   = MODELED monthly included-spend pool under current promotional pricing
+//   promo_pool_utilization_pct       = projected_month_end_spend / promo pool (ratio; >= 1.0 = projected overage)
+// NET is usage-side (post pooled-entitlement deduction), NOT final billed consumption: the month-end customer
+// discount is not in this dataset, so treat NET as directional. The pool dollars are modeled estimates, not a
+// contracted cap. Use EQUAL-LENGTH windows for the NET MoM because the current month is partial.
+let me = "{{OWNER_ID}}";
+let b = salesforce_account_daily_ubb_utilization_burn_rate_fact | where sales_owner_id == me;
+let asof = toscalar(b | summarize max(measurement_date));
+let net_prev = b | where measurement_date between (datetime({{PREV_START}}) .. datetime({{PREV_END}}))
+    | summarize net_prev = sum(account_billable_usage_in_dollar) by salesforce_account_id;
+let net_cur = b | where measurement_date between (datetime({{CUR_START}}) .. datetime({{CUR_END}}))
+    | summarize net_cur = sum(account_billable_usage_in_dollar) by salesforce_account_id;
+let snap = b | where measurement_date == asof
+    | summarize arg_max(measurement_date, account_nbr_of_ubb_users, projected_month_end_spend,
+        promo_pool_for_month_in_dollar, promo_pool_utilization_pct) by salesforce_account_id;
+snap
+| union
+    (snap | project salesforce_account_id),
+    (net_prev | project salesforce_account_id),
+    (net_cur | project salesforce_account_id)
+| distinct salesforce_account_id
+| join kind=leftouter snap on salesforce_account_id
+| join kind=leftouter net_prev on salesforce_account_id
+| join kind=leftouter net_cur on salesforce_account_id
+| join kind=leftouter (salesforce_account_dim | project salesforce_account_id, salesforce_account_name)
+    on salesforce_account_id
+| extend net_prev = round(coalesce(net_prev, 0.0), 0), net_cur = round(coalesce(net_cur, 0.0), 0)
+| extend net_delta = net_cur - net_prev,
+         net_pct = round(iff(net_prev > 0, (net_cur - net_prev) / net_prev * 100, 0.0), 1)
+| project account = salesforce_account_name, salesforce_account_id,
+    net_prev, net_cur, net_delta, net_pct,
+    engaged = account_nbr_of_ubb_users,
+    projected_eom = round(projected_month_end_spend, 0),
+    pool_dollars = round(promo_pool_for_month_in_dollar, 0),
+    pool_util = round(promo_pool_utilization_pct, 3)
+| order by net_cur desc
