@@ -11,7 +11,11 @@ Meta rep_name/segment/region come from config.json in the same directory.
 import json, sys, os, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CFG = json.load(open(os.path.join(HERE, "config.json")))
+# config.json lives in the pipeline root (parent of scripts/); fall back to HERE.
+_CFG_PATH = os.path.join(HERE, os.pardir, "config.json")
+if not os.path.exists(_CFG_PATH):
+    _CFG_PATH = os.path.join(HERE, "config.json")
+CFG = json.load(open(_CFG_PATH))
 
 
 def load_rows(path):
