@@ -28,8 +28,12 @@ month-to-date windows: the two most recent COMPLETE months, day 1-28 each
 5. `python3 scripts/transform.py consolidated.json surface.json data.json --as-of <asof> --window "<label>"`.
 6. `python3 scripts/build_dashboard.py data.json index.html`.
 7. Publish `index.html` to `config.publish_repo` at `config.publish_path` on `config.publish_branch`
-   (GitHub Contents API PUT with the existing file sha). `.nojekyll` at repo root keeps Pages from
-   trying to run Jekyll on the dashboard (its JS contains `{{`/`{%` that break the Jekyll build).
+   by committing and pushing (`git add copilot-book-health/index.html && git commit && git push`).
+   GitHub Pages is a LEGACY branch deploy from `master` root, so a push redeploys automatically at the
+   stable URL. `.nojekyll` at repo root keeps Pages from running Jekyll on the dashboard (its JS
+   contains `{{`/`{%` that break the Jekyll build). Do NOT add an Actions Pages workflow: it competes
+   with the branch deploy and leaves builds stuck queued. Raw data payloads (`consolidated.json`,
+   `surface.json`, `data.json`, `recs.json`) are gitignored under `pipeline/`; do not commit them.
 8. Create a GitHub issue in `config.issue_repo` titled `Copilot Book Health - <YYYY-MM-DD>` whose body
    contains the dashboard link plus a short headline (book seats, UBB prev->cur, top SAVE/EXPAND/OVERAGE).
 
